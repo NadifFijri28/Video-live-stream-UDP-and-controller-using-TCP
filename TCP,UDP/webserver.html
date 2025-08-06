@@ -4,7 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UDP Video Streaming</title>
-    <link rel="stylesheet" href="/style.css" />
+    <!--
+    Untuk menampilkan style dan script, pastikan file style.css dan script.js berada di folder 'static'.
+    Gunakan url_for agar Flask dapat melayani file statis dengan benar.
+    -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
     <div class="main-container">
@@ -48,6 +52,6 @@
         </div>
     </div>
 
-    <script src="/script.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

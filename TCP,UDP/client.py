@@ -14,7 +14,12 @@ import time
 from flask import Flask, Response, render_template, request, jsonify
 
 # Inisialisasi aplikasi Flask dan variabel global
-app = Flask(__name__, template_folder='.')
+from flask import send_from_directory
+app = Flask(__name__, template_folder='.', static_folder='static')
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    # Endpoint untuk melayani file statis (CSS/JS)
+    return send_from_directory(app.static_folder, filename)
 latest_frame = {'data': b'', 'timestamp': 0, 'counter': 0, 'stats': {'fps': 0}}
 current_coords = {'x': 0, 'y': 0}  # Menyimpan koordinat terbaru
 
@@ -28,7 +33,7 @@ class VideoStreamReceiver:
     def __init__(self, ip="0.0.0.0", port=9001):
         # Ubah 'ip' di sini ke IP client jika ingin menerima hanya dari IP tertentu.
         # Biasanya biarkan "0.0.0.0" agar menerima dari semua alamat.
-        
+
         # Inisialisasi variabel utama
         self.ip = ip
         self.port = port
