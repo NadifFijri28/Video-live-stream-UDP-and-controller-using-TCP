@@ -1,3 +1,9 @@
+"""
+- Mengambil video dari kamera dan mengirim ke client via UDP.
+- Mendengarkan perintah arah dari client via TCP dan mengubah koordinat kartesian.
+- Menampilkan preview video lokal.
+- Menampilkan log koordinat setiap kali perintah arah diterima.
+"""
 # Import library untuk pengolahan video, komunikasi jaringan, dan threading
 import cv2
 import socket
@@ -7,10 +13,17 @@ import threading
 
 class VideoStreamSender:
     """
-    Kelas untuk menangkap video dari kamera dan mengirimkannya ke client melalui UDP,
-    serta menerima perintah arah dari client melalui TCP.
+    Kelas utama server:
+    - start(): Memulai streaming video dan listener TCP.
+    - _capture_and_send(): Loop pengambilan frame dan pengiriman ke client.
+    - _tcp_command_listener(): Listener TCP untuk menerima perintah arah dan update koordinat.
+    - stop(): Menghentikan streaming dan release resource.
     """
     def __init__(self, ip="127.0.0.1", port=9001, camera_index=0):
+        # Ubah 'ip' di sini ke IP client (penerima video) jika ingin streaming ke perangkat lain.
+        # Contoh: ip="192.168.1.10" jika client berada di jaringan lokal dengan IP tersebut.
+        
+        # Inisialisasi variabel utama
         self.coord_x = 0
         self.coord_y = 0
         self.ip = ip
@@ -22,6 +35,7 @@ class VideoStreamSender:
         self.cap = None
 
     def start(self):
+        # Mulai streaming video dan listener TCP dalam thread terpisah
         self.running = True
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
@@ -32,11 +46,13 @@ class VideoStreamSender:
         print(f"📡 Streaming to {self.ip}:{self.port}")
 
     def _configure_camera(self):
+        # Set resolusi dan FPS kamera
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.cap.set(cv2.CAP_PROP_FPS, 30)
 
     def _capture_and_send(self):
+        # Loop utama: ambil frame dari kamera, encode, kirim ke client
         while self.running:
             try:
                 ret, frame = self.cap.read()
@@ -79,6 +95,7 @@ class VideoStreamSender:
                 time.sleep(1)
 
     def _tcp_command_listener(self):
+        # Listener TCP: menerima perintah arah dari client dan update koordinat
         tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         tcp_sock.bind(("0.0.0.0", 9002))
@@ -110,6 +127,7 @@ class VideoStreamSender:
                     print(f"\n➡️ Received direction: {arah_log} | Koordinat saat ini: ({self.coord_x}, {self.coord_y})")
 
     def stop(self):
+        # Stop streaming dan release semua resource
         self.running = False
         if self.cap:
             self.cap.release()
@@ -118,12 +136,19 @@ class VideoStreamSender:
         cv2.destroyAllWindows()
 
 if __name__ == '__main__':
+    # Entry point program
+    # Membuat objek sender dan mulai streaming video
+    # --- PETUNJUK ---
+    # Ubah ip="127.0.0.1" ke IP client (penerima video) jika ingin streaming ke perangkat lain.
+    # Contoh: ip="192.168.1.10"
     sender = VideoStreamSender(ip="127.0.0.1")
     try:
         sender.start()
+        # Loop utama agar program tetap berjalan
         while sender.running:
             time.sleep(1)
     except KeyboardInterrupt:
+        # Stop streaming jika user menekan Ctrl+C
         pass
     finally:
         sender.stop()

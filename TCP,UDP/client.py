@@ -1,3 +1,9 @@
+"""
+- Menerima video dari server via UDP dan menampilkan di web.
+- Menyediakan webserver (Flask) untuk kontrol arah dan visualisasi koordinat.
+- Mengirim perintah arah ke server via TCP.
+- Menyimpan dan menampilkan statistik frame dan koordinat.
+"""
 # Import library untuk komunikasi jaringan, threading, pengolahan gambar, dan web server
 import socket
 import threading
@@ -14,9 +20,16 @@ current_coords = {'x': 0, 'y': 0}  # Menyimpan koordinat terbaru
 
 class VideoStreamReceiver:
     """
-    Kelas untuk menerima stream video melalui UDP dan mengupdate frame terbaru
+    Kelas utama client:
+    - start(): Mulai menerima stream video dari server UDP.
+    - _receive_frames(): Loop menerima frame, update statistik, update frame terbaru.
+    - stop(): Menghentikan receiver dan release resource.
     """
     def __init__(self, ip="0.0.0.0", port=9001):
+        # Ubah 'ip' di sini ke IP client jika ingin menerima hanya dari IP tertentu.
+        # Biasanya biarkan "0.0.0.0" agar menerima dari semua alamat.
+        
+        # Inisialisasi variabel utama
         self.ip = ip
         self.port = port
         self.running = False
@@ -24,6 +37,7 @@ class VideoStreamReceiver:
         self.frame_stats = {'last_time': time.time(), 'fps': 0, 'total_frames': 0}
         
     def start(self):
+        # Mulai receiver UDP dalam thread terpisah
         self.running = True
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
@@ -32,6 +46,7 @@ class VideoStreamReceiver:
         print(f"🚀 UDP receiver started on {self.ip}:{self.port}")
 
     def _receive_frames(self):
+        # Loop utama: menerima frame dari server, update statistik dan frame terbaru
         while self.running:
             try:
                 data, _ = self.sock.recvfrom(4)
@@ -66,11 +81,16 @@ class VideoStreamReceiver:
                 time.sleep(1)
 
     def stop(self):
+        # Stop receiver dan release resource
         self.running = False
         if self.sock:
             self.sock.close()
 
 def send_direction_to_server(direction, server_ip='127.0.0.1', server_port=9002):
+    # Fungsi untuk mengirim perintah arah ke server via TCP
+    # --- PETUNJUK ---
+    # Ubah 'server_ip' di sini ke IP server (pengirim video) jika client dan server berada di perangkat berbeda.
+    # Contoh: server_ip='192.168.1.20' jika server berada di jaringan lokal dengan IP tersebut.
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((server_ip, server_port))
@@ -80,12 +100,14 @@ def send_direction_to_server(direction, server_ip='127.0.0.1', server_port=9002)
 
 @app.route('/')
 def index():
+    # Endpoint utama webserver, menampilkan halaman kontrol dan video
     return render_template('webserver.html')
 
 first_access_logged = False
 
 @app.route('/video_feed')
 def video_feed():
+    # Endpoint streaming video ke web, format MJPEG
     global first_access_logged
     if not first_access_logged:
         client_ip = request.remote_addr
@@ -104,6 +126,7 @@ def video_feed():
 
 @app.route('/stats')
 def stats():
+    # Endpoint statistik frame untuk web
     if latest_frame['data']:
         return {
             'fps': latest_frame['stats']['fps'],
@@ -114,11 +137,13 @@ def stats():
 
 @app.route('/coords')
 def get_coords():
+    # Endpoint koordinat kartesian untuk web
     global current_coords
     return jsonify(current_coords)
 
 @app.route('/direction', methods=['POST'])
 def direction():
+    # Endpoint menerima perintah arah dari web, update koordinat dan kirim ke server
     global current_coords
     direction = None
     if request.is_json:
@@ -146,6 +171,7 @@ def direction():
     return jsonify({'status': 'error', 'message': 'No direction received'}), 400
 
 if __name__ == '__main__':
+    # Entry point program client
     import socket
     def get_local_ip():
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
