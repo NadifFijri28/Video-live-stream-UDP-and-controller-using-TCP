@@ -1,0 +1,82 @@
+<!-- webserver.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UDP Video Streaming</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { display: flex; flex-direction: column; align-items: center; }
+        .stats { margin: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px; }
+        .arrow-controls { margin-top: 20px; }
+        .arrow-controls button {
+            font-size: 2em;
+            margin: 5px;
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .arrow-controls button:hover {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>UDP Video Streaming</h1>
+        <div class="stats" id="stats">
+            <p>Waiting for data...</p>
+        </div>
+        <img src="/video_feed" width="640" height="480">
+        <div class="arrow-controls">
+            <div>
+                <button onclick="sendDirection('UP')">⬆️</button>
+            </div>
+            <div>
+                <button onclick="sendDirection('LEFT')">⬅️</button>
+                <button onclick="sendDirection('DOWN')">⬇️</button>
+                <button onclick="sendDirection('RIGHT')">➡️</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-update stats
+        function updateStats() {
+            fetch('/stats')
+                .then(response => response.json())
+                .then(data => {
+                    const statsDiv = document.getElementById('stats');
+                    if (data.fps !== undefined) {
+                        statsDiv.innerHTML = `
+                            <p>FPS: ${data.fps}</p>
+                            <p>Total Frames: ${data.total_frames}</p>
+                            <p>Last Update: ${data.last_update.toFixed(2)}s ago</p>
+                        `;
+                    } else {
+                        statsDiv.innerHTML = `<p>${data.status}</p>`;
+                    }
+                });
+        }
+        
+        setInterval(updateStats, 1000);
+        updateStats();
+
+               // Send direction to server
+        function sendDirection(dir) {
+            fetch('/direction', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({direction: dir})
+            }).then(res => res.json()).then(data => {
+                if(data.status === 'ok') {
+                    console.log('Direction sent:', data.direction);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
