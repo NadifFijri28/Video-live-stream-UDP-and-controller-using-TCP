@@ -141,13 +141,27 @@ def direction():
 
 if __name__ == '__main__':
     # Program utama: inisialisasi dan jalankan server video serta web server
+    import socket
+    def get_local_ip():
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+        except Exception:
+            ip = 'localhost'
+        finally:
+            s.close()
+        return ip
+
     receiver = VideoStreamReceiver()
     receiver.start()
     try:
         import logging
         log = logging.getLogger('werkzeug')
         log.setLevel(logging.ERROR)
-        print("🌐 Web server running at http://localhost:5000")
+        local_ip = get_local_ip()
+        print(f"🌐 Web server running at http://localhost:5000")
+        print(f"🌐 Web server running at http://{local_ip}:5000 (akses dari device lain di jaringan yang sama)")
         app.run(host="0.0.0.0", port=5000, threaded=True)
     finally:
         receiver.stop()

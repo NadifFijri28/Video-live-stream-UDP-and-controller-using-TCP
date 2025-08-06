@@ -165,6 +165,10 @@
             <div class="video-wrapper">
                 <img id="video" src="/video_feed" alt="Video Stream" />
             </div>
+            <!-- Kotak diagram kartesius -->
+            <div style="margin-top:30px; display:flex; justify-content:center;">
+                <canvas id="coordsCanvas" width="100" height="100" style="background:white; border-radius:10px; border:2px solid #333;"></canvas>
+            </div>
         </div>
 
         <!-- ⚙️ KOLOM KANAN: KONTROL -->
@@ -203,6 +207,7 @@
     </div>
 
     <script>
+
         // Fungsi: Memperbarui statistik (FPS, jumlah frame, dll) dari server
         function updateStats() {
             fetch('/stats')
@@ -225,10 +230,45 @@
                 .catch(err => {
                     console.error("Gagal memuat statistik:", err);
                 });
+            // Update koordinat dari server Flask utama (port yang sama dengan webserver.html)
+            fetch('/coords')
+                .then(response => response.json())
+                .then(data => {
+                    drawCoords(data.x, data.y);
+                })
+                .catch(err => {
+                    drawCoords(0, 0);
+                });
         }
 
         setInterval(updateStats, 1000);
         updateStats();
+
+        // Fungsi: Menggambar koordinat pada diagram kartesius 100x100
+        function drawCoords(x, y) {
+            const canvas = document.getElementById('coordsCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Gambar sumbu X dan Y
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(50, 0); ctx.lineTo(50, 100); // Y
+            ctx.moveTo(0, 50); ctx.lineTo(100, 50); // X
+            ctx.stroke();
+            // Gambar titik koordinat
+            ctx.fillStyle = 'red';
+            // Skala: 1 unit = 5px, pusat (50,50)
+            let px = 50 + x * 5;
+            let py = 50 - y * 5;
+            ctx.beginPath();
+            ctx.arc(px, py, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            // Label koordinat
+            ctx.fillStyle = 'black';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(`(${x}, ${y})`, px + 8, py - 8);
+        }
 
         // Fungsi: Mengirim arah ke server (misalnya untuk kendali robot/mobil)
         function sendDirection(dir) {

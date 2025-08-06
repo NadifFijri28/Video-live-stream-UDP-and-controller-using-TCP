@@ -11,6 +11,9 @@ class VideoStreamSender:
     serta menerima perintah arah dari client melalui TCP.
     """
     def __init__(self, ip="127.0.0.1", port=9001, camera_index=0):
+        # Koordinat kartesius
+        self.coord_x = 0
+        self.coord_y = 0
         # Inisialisasi alamat IP, port tujuan, dan index kamera
         self.ip = ip
         self.port = port
@@ -108,14 +111,22 @@ class VideoStreamSender:
                     direction = data.decode().strip().upper()
                     # Mapping arah ke bahasa Indonesia
                     arah_map = {
-                        # Mapping arah ke bahasa Indonesia
                         "LEFT": "kiri",
                         "RIGHT": "kanan",
                         "UP": "atas",
                         "DOWN": "bawah"
                     }
                     arah_log = arah_map.get(direction, direction)
-                    print(f"\n➡️ Received direction: {arah_log}")  # Tampilkan perintah yang diterima
+                    # Update koordinat kartesius
+                    if direction == "RIGHT":
+                        self.coord_x += 1
+                    elif direction == "LEFT":
+                        self.coord_x -= 1
+                    elif direction == "UP":
+                        self.coord_y += 1
+                    elif direction == "DOWN":
+                        self.coord_y -= 1
+                    print(f"\n➡️ Received direction: {arah_log} | Koordinat saat ini: ({self.coord_x}, {self.coord_y})")
     def start(self):
         self.running = True
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
