@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UDP Video Streaming</title>
+    <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+    <div class="main-container">
+        <div class="video-section">
+            <h1>UDP Video Streaming</h1>
+            <div class="video-wrapper">
+                <img id="video" src="/video_feed" alt="Video Stream" />
+            </div>
+            <div style="margin-top:30px; display:flex; justify-content:center;">
+                <canvas id="coordsCanvas" width="200" height="200" style="background:white; border-radius:10px; border:2px solid #333;"></canvas>
+            </div>
+            <div class="coords-display">
+                Koordinat: <span id="coordsText">(0, 0)</span>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h1>Kontrol Arah</h1>
+            <div class="arrow-controls">
+                <button onclick="sendDirection('UP')">⬆️</button>
+                <button onclick="sendDirection('LEFT')">⬅️</button>
+                <button onclick="sendDirection('DOWN')">⬇️</button>
+                <button onclick="sendDirection('RIGHT')">➡️</button>
+            </div>
+
+            <div class="stats">
+                <div class="stats-item">
+                    <span class="stats-icon">📊</span>
+                    <span class="stats-value">FPS: <span id="fps">-</span></span>
+                </div>
+                <div class="stats-item">
+                    <span class="stats-icon">🧮</span>
+                    <span class="stats-value">Total Frames: <span id="totalFrames">-</span></span>
+                </div>
+                <div class="stats-item">
+                    <span class="stats-icon">⏰</span>
+                    <span class="stats-value">Last Update: <span id="lastUpdate">-</span></span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="/script.js"></script>
+</body>
+</html>
