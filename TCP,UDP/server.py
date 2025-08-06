@@ -21,7 +21,7 @@ class VideoStreamSender:
     """
     def __init__(self, ip="127.0.0.1", port=9001, camera_index=0):
         # Ubah 'ip' di sini ke IP client (penerima video) jika ingin streaming ke perangkat lain.
-        # Contoh: ip="192.168.1.10" jika client berada di jaringan lokal dengan IP tersebut.
+        # Contoh: ip="192.168.1.**" jika client berada di jaringan lokal dengan IP tersebut.
         
         # Inisialisasi variabel utama
         self.coord_x = 0
@@ -151,4 +151,5 @@ if __name__ == '__main__':
         # Stop streaming jika user menekan Ctrl+C
         pass
     finally:
+
         sender.stop()
