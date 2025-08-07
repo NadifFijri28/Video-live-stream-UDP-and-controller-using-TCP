@@ -92,10 +92,10 @@ class VideoStreamReceiver:
             self.sock.close()
 
 def send_direction_to_server(direction, server_ip='127.0.0.1', server_port=9002):
-    # Fungsi untuk mengirim perintah arah ke server via TCP
-    # --- PETUNJUK ---
     # Ubah 'server_ip' di sini ke IP server (pengirim video) jika client dan server berada di perangkat berbeda.
     # Contoh: server_ip='192.168.1.20' jika server berada di jaringan lokal dengan IP tersebut.
+    
+    # Fungsi untuk mengirim perintah arah ke server via TCP
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((server_ip, server_port))

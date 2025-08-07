@@ -20,8 +20,8 @@ class VideoStreamSender:
     - stop(): Menghentikan streaming dan release resource.
     """
     def __init__(self, ip="127.0.0.1", port=9001, camera_index=0):
-        # Ubah 'ip' di sini ke IP client (penerima video) jika ingin streaming ke perangkat lain.
-        # Contoh: ip="192.168.1.**" jika client berada di jaringan lokal dengan IP tersebut.
+        # Jika web diakses dari device lain, ganti ip="127.0.0.1" menjadi ip="IP_ADDRESS_CLIENT"
+        # Contoh: ip="192.168.1.5" jika client Flask/web ada di 192.168.1.5
 
         # Inisialisasi variabel utama
         self.coord_x = 0
@@ -138,10 +138,7 @@ class VideoStreamSender:
 if __name__ == '__main__':
     # Entry point program
     # Membuat objek sender dan mulai streaming video
-    # --- PETUNJUK ---
-    # Ubah ip="127.0.0.1" ke IP client (penerima video) jika ingin streaming ke perangkat lain.
-    # Contoh: ip="192.168.1.10"
-    sender = VideoStreamSender(ip="127.0.0.1")
+    sender = VideoStreamSender()
     try:
         sender.start()
         # Loop utama agar program tetap berjalan
