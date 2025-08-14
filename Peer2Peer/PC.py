@@ -1,8 +1,5 @@
 """
-Aplikasi GUI untuk menerima video dan kontrol robot P2P
-- Menerima video dari Maixcam.py via UDP
-- Mengirim perintah arah ke Maixcam.py via TCP (JSON)
-- Menampilkan statistik dan koordinat
+Aplikasi GUI untuk kontrol robot P2P dengan sinkronisasi koordinat
 """
 import sys
 import socket
@@ -13,12 +10,11 @@ import time
 import json
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, 
                              QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout)
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QBrush
 from PyQt5.QtCore import QTimer, Qt
 
 class VideoReceiver:
     def __init__(self, ip="0.0.0.0", port=9001):
-        # IP dan port UDP untuk menerima video dari Maixcam.py
         self.ip = ip
         self.port = port
         self.running = False
@@ -60,7 +56,7 @@ class VideoReceiver:
                     self.current_frame = frame
                     
             except Exception as e:
-                print(f"\n⚠️ Gagal menerima frame: {str(e)}")
+                print(f"⚠️ Gagal menerima frame: {str(e)}")
                 time.sleep(1)
 
     def stop(self):
@@ -71,188 +67,188 @@ class VideoReceiver:
 class RobotGUI(QMainWindow):
     def __init__(self, server_ip='127.0.0.1', command_port=9002):
         super().__init__()
-        self.setWindowTitle("Robot P2P Control & Video Stream")
-        self.setGeometry(100, 100, 1000, 650)
-        self.setStyleSheet("background-color: #f5f5f5;")
+        self.setWindowTitle("Robot P2P Control")
+        self.setGeometry(100, 100, 900, 600)
         
-        # Konfigurasi IP/port Maixcam.py
+        # Konfigurasi koneksi
         self.server_ip = server_ip
         self.command_port = command_port
-
+        self.coords = {'x': 0, 'y': 0}
+        self.coord_lock = threading.Lock()
+        
         # Inisialisasi video receiver
         self.video_receiver = VideoReceiver()
         self.video_receiver.start()
-
-        # Variabel koordinat
-        self.coords = {'x': 0, 'y': 0}
-
+        
+        # Mulai thread sinkronisasi koordinat
+        threading.Thread(target=self._sync_coords, daemon=True).start()
+        
         # Setup UI
         self.init_ui()
-
+        
         # Timer untuk update frame
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(30)  # ~30 FPS
-        
+        self.timer.start(30)
+
     def init_ui(self):
-        # Widget utama
         main_widget = QWidget()
-        grid = QGridLayout()
-
-        # Judul aplikasi di atas tengah
-        title_label = QLabel("Robot P2P Control & Video Stream")
-        title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #222; margin-bottom: 10px;")
-        grid.addWidget(title_label, 0, 0, 1, 2)
-
-        # Video di kiri atas
+        main_layout = QHBoxLayout()
+        
+        # Panel video
+        video_panel = QVBoxLayout()
         self.video_label = QLabel()
         self.video_label.setAlignment(Qt.AlignCenter)
-        self.video_label.setStyleSheet("border: 3px solid #1976d2; background: #222;")
+        self.video_label.setStyleSheet("border: 2px solid #333;")
         self.video_label.setFixedSize(640, 480)
-        grid.addWidget(self.video_label, 1, 0, 2, 1)
-
-        # Statistik di bawah video
+        video_panel.addWidget(self.video_label)
+        
+        # Statistik
         self.stats_label = QLabel("FPS: 0 | Total Frame: 0")
-        self.stats_label.setAlignment(Qt.AlignLeft)
-        self.stats_label.setStyleSheet("font-size: 16px; color: #1976d2; margin-top: 8px; margin-left: 10px;")
-        grid.addWidget(self.stats_label, 3, 0, 1, 1)
-
-        # Kontrol arah di kanan atas
+        video_panel.addWidget(self.stats_label)
+        
+        # Panel kontrol
+        control_panel = QVBoxLayout()
+        
+        # Tombol kontrol
         btn_grid = QGridLayout()
         self.btn_up = QPushButton("↑ ATAS")
         self.btn_left = QPushButton("← KIRI")
         self.btn_stop = QPushButton("■ STOP")
         self.btn_right = QPushButton("→ KANAN")
         self.btn_down = QPushButton("↓ BAWAH")
+        
+        # Style tombol
         for btn in [self.btn_up, self.btn_left, self.btn_stop, self.btn_right, self.btn_down]:
-            btn.setFixedSize(120, 60)
-            btn.setStyleSheet("font-size: 18px; font-weight: bold; background: #1976d2; color: #fff; border-radius: 8px;")
+            btn.setFixedSize(100, 60)
+            btn.setStyleSheet("font-size: 14px; font-weight: bold;")
+        
+        # Layout tombol
         btn_grid.addWidget(self.btn_up, 0, 1)
         btn_grid.addWidget(self.btn_left, 1, 0)
         btn_grid.addWidget(self.btn_stop, 1, 1)
         btn_grid.addWidget(self.btn_right, 1, 2)
         btn_grid.addWidget(self.btn_down, 2, 1)
-        self.btn_up.clicked.connect(lambda: self.send_command('UP'))
-        self.btn_left.clicked.connect(lambda: self.send_command('LEFT'))
-        self.btn_stop.clicked.connect(lambda: self.send_command('STOP'))
-        self.btn_right.clicked.connect(lambda: self.send_command('RIGHT'))
-        self.btn_down.clicked.connect(lambda: self.send_command('DOWN'))
-        control_widget = QWidget()
-        control_widget.setLayout(btn_grid)
-        grid.addWidget(control_widget, 1, 1, 1, 1)
-
-        # Diagram kartesian di kanan bawah kontrol
+        
+        # Koneksi tombol
+        self.btn_up.clicked.connect(lambda: self.send_command('ATAS'))
+        self.btn_left.clicked.connect(lambda: self.send_command('KIRI'))
+        self.btn_stop.clicked.connect(lambda: self.send_command('BERHENTI'))
+        self.btn_right.clicked.connect(lambda: self.send_command('KANAN'))
+        self.btn_down.clicked.connect(lambda: self.send_command('BAWAH'))
+        control_panel.addLayout(btn_grid)
+        
+        # Diagram koordinat
         self.diagram_label = QLabel()
         self.diagram_label.setFixedSize(220, 220)
-        self.diagram_label.setAlignment(Qt.AlignCenter)
-        self.diagram_label.setStyleSheet("border: 2px solid #1976d2; background: #fff; margin-top: 18px;")
-        grid.addWidget(self.diagram_label, 2, 1, 1, 1)
-
-        # Koordinat di bawah diagram
+        control_panel.addWidget(self.diagram_label)
+        
+        # Label koordinat
         self.coords_label = QLabel("Koordinat: (0, 0)")
         self.coords_label.setAlignment(Qt.AlignCenter)
-        self.coords_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #1976d2; margin-top: 10px;")
-        grid.addWidget(self.coords_label, 3, 1, 1, 1)
-
-        main_widget.setLayout(grid)
+        control_panel.addWidget(self.coords_label)
+        
+        # Gabungkan panel
+        main_layout.addLayout(video_panel, 70)
+        main_layout.addLayout(control_panel, 30)
+        main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
-    
+
     def update_frame(self):
         if self.video_receiver.current_frame is not None:
             frame = self.video_receiver.current_frame
-            # Konversi frame OpenCV ke QImage
             rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb_image.shape
             bytes_per_line = ch * w
             qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-
-            # Tampilkan di QLabel dengan ukuran tetap
-            pixmap = QPixmap.fromImage(qt_image)
-            pixmap = pixmap.scaled(640, 480, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.video_label.setPixmap(pixmap)
-
-            # Update statistik
+            self.video_label.setPixmap(QPixmap.fromImage(qt_image).scaled(
+                self.video_label.width(), 
+                self.video_label.height(),
+                Qt.KeepAspectRatio
+            ))
+            
             self.stats_label.setText(
                 f"FPS: {self.video_receiver.frame_stats['fps']} | "
                 f"Total Frame: {self.video_receiver.frame_stats['total_frames']}"
             )
-
+        
         # Update diagram koordinat
         self.update_diagram()
 
     def update_diagram(self):
-        # Gambar diagram koordinat mirip webserver.html
-        from PyQt5.QtGui import QPainter, QPen, QColor, QBrush
-        import math
         pixmap = QPixmap(220, 220)
-        pixmap.fill(QColor('#fff'))
+        pixmap.fill(Qt.white)
         painter = QPainter(pixmap)
-        pen_axis = QPen(QColor('#1976d2'), 3)
-        pen_grid = QPen(QColor('#bbb'), 1, Qt.DashLine)
-        pen_point = QPen(QColor('#d32f2f'), 0)
-        brush_point = QBrush(QColor('#d32f2f'))
-
-        # Draw grid
-        painter.setPen(pen_grid)
-        for i in range(1, 5):
-            painter.drawLine(0, i*44, 220, i*44)
-            painter.drawLine(i*44, 0, i*44, 220)
-
-        # Draw axis
-        painter.setPen(pen_axis)
-        painter.drawLine(110, 0, 110, 220)
-        painter.drawLine(0, 110, 220, 110)
-
-        # Draw point (robot position)
-        x = self.coords.get('x', 0)
-        y = self.coords.get('y', 0)
-        # Map x,y (-100..100) to diagram (0..220)
-        px = int(110 + x)
-        py = int(110 - y)
-        painter.setPen(pen_point)
-        painter.setBrush(brush_point)
-        painter.drawEllipse(px-7, py-7, 14, 14)
-
+        
+        # Gambar grid
+        painter.setPen(QPen(Qt.gray, 1, Qt.DashLine))
+        for i in range(0, 220, 44):
+            painter.drawLine(0, i, 220, i)
+            painter.drawLine(i, 0, i, 220)
+        
+        # Gambar sumbu
+        painter.setPen(QPen(Qt.blue, 2))
+        painter.drawLine(110, 0, 110, 220)  # Sumbu Y
+        painter.drawLine(0, 110, 220, 110)  # Sumbu X
+        
+        # Gambar titik koordinat
+        with self.coord_lock:
+            x, y = self.coords['x'], self.coords['y']
+        
+        # Normalisasi koordinat (-50,50) ke (0,220)
+        px = int(110 + x * 2.2)
+        py = int(110 - y * 2.2)
+        
+        painter.setPen(QPen(Qt.red, 0))
+        painter.setBrush(QBrush(Qt.red))
+        painter.drawEllipse(px-5, py-5, 10, 10)
+        
         painter.end()
         self.diagram_label.setPixmap(pixmap)
-    
+        self.coords_label.setText(f"Koordinat: ({x}, {y})")
+
+    def _sync_coords(self):
+        """Sinkronisasi koordinat dengan server secara berkala"""
+        while self.video_receiver.running:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(2.0)
+                    s.connect((self.server_ip, self.command_port))
+                    s.sendall(json.dumps({'sync': True}).encode())
+                    data = s.recv(1024)
+                    if data:
+                        response = json.loads(data.decode())
+                        if response.get('status') == 'ok' and response.get('type') == 'sync_response':
+                            with self.coord_lock:
+                                self.coords = {'x': response['x'], 'y': response['y']}
+            except Exception as e:
+                print(f"⚠️ Gagal sinkronisasi koordinat: {str(e)}")
+            
+            time.sleep(10)  # Sinkron setiap 10 detik
+
     def send_command(self, direction):
-        """
-        Kirim perintah arah ke Maixcam.py via TCP (JSON)
-        dan update koordinat dari respons
-        """
+        """Kirim perintah gerakan ke server"""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(2.0)
                 s.connect((self.server_ip, self.command_port))
-                command = json.dumps({'direction': direction})
-                s.sendall(command.encode())
-                response = s.recv(1024)
-                if response:
-                    data = json.loads(response.decode())
-                    if data.get('status') == 'ok' and 'x' in data and 'y' in data:
-                        self.coords = {'x': data['x'], 'y': data['y']}
-                        self.coords_label.setText(f"Koordinat: ({self.coords['x']}, {self.coords['y']})")
-                    else:
-                        print(f"⚠️ Respons tidak valid: {data}")
-                else:
-                    print("⚠️ Tidak ada respons dari Maixcam.py")
+                s.sendall(json.dumps({'direction': direction}).encode())
+                
+                data = s.recv(1024)
+                if data:
+                    response = json.loads(data.decode())
+                    if response.get('status') == 'ok' and response.get('type') == 'move_response':
+                        with self.coord_lock:
+                            self.coords = {'x': response['x'], 'y': response['y']}
         except Exception as e:
-            print(f"⚠️ Gagal mengirim perintah: {e}")
-    
+            print(f"⚠️ Gagal mengirim perintah: {str(e)}")
+
     def closeEvent(self, event):
         self.video_receiver.stop()
         event.accept()
 
 if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(description="GUI Robot P2P")
-    parser.add_argument('--server_ip', type=str, default='127.0.0.1', help='IP Maixcam.py')
-    parser.add_argument('--command_port', type=int, default=9002, help='Port TCP Maixcam.py')
-    args = parser.parse_args()
-
     app = QApplication(sys.argv)
-    gui = RobotGUI(server_ip=args.server_ip, command_port=args.command_port)
+    gui = RobotGUI()
     gui.show()
     sys.exit(app.exec_())

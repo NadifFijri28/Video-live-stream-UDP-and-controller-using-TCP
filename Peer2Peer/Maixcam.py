@@ -1,35 +1,46 @@
 """
-- Mengambil video dari kamera dan mengirim langsung ke WebServer.py via UDP
-- Menerima perintah arah dari WebServer.py via TCP dan mengupdate koordinat
-- Menampilkan preview video lokal
-- Menampilkan log koordinat saat menerima perintah arah
+Server penyiaran video UDP dan penerima perintah TCP dengan sinkronisasi koordinat
 """
 import cv2
 import socket
 import time
 import numpy as np
-import threading  
+import threading
 import json
 
 class VideoStreamSender:
     def __init__(self, server_ip="127.0.0.1", video_port=9001, command_port=9002, camera_index=0):
-        # Inisialisasi koordinat
+        # Inisialisasi koordinat dengan thread lock
         self.coord_x = 0
         self.coord_y = 0
-        self.server_ip = server_ip  # IP WebServer.py
-        self.video_port = video_port  # Port untuk streaming video
-        self.command_port = command_port  # Port untuk perintah kontrol
+        self.coord_lock = threading.Lock()
+        
+        # Konfigurasi jaringan
+        self.server_ip = server_ip
+        self.video_port = video_port
+        self.command_port = command_port
         self.camera_index = camera_index
+        
+        # Status kontrol
         self.running = False
-        self.sock = None
-        self.frame_stats = {'last_time': time.time(), 'fps': 0, 'total_frames': 0}
+        self.udp_sock = None
         self.cap = None
+        
+        # Statistik
+        self.frame_stats = {
+            'last_time': time.time(),
+            'fps': 0,
+            'total_frames': 0,
+            'command_count': 0
+        }
 
     def start(self):
+        """Memulai semua komponen server"""
         self.running = True
+        
         # Setup UDP untuk streaming video
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
+        self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
         
         # Setup kamera
         self.cap = cv2.VideoCapture(self.camera_index)
@@ -41,16 +52,17 @@ class VideoStreamSender:
         # Mulai thread untuk streaming video
         threading.Thread(target=self._capture_and_send, daemon=True).start()
         
-        print(f"📡 Streaming video ke {self.server_ip}:{self.video_port}")
-        print(f"🡺 Server perintah TCP berjalan di port {self.command_port}")
+        print(f"📡 Streaming video UDP ke {self.server_ip}:{self.video_port}")
+        print(f"🔄 Server perintah TCP di port {self.command_port}")
 
     def _configure_camera(self):
-        # Konfigurasi kamera
+        """Konfigurasi kamera"""
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.cap.set(cv2.CAP_PROP_FPS, 30)
 
     def _capture_and_send(self):
+        """Loop pengambilan dan pengiriman frame video"""
         while self.running:
             try:
                 ret, frame = self.cap.read()
@@ -60,12 +72,13 @@ class VideoStreamSender:
                     continue
 
                 # Update statistik frame
-                self.frame_stats['total_frames'] += 1
-                current_time = time.time()
-                if current_time - self.frame_stats['last_time'] >= 1.0:
-                    self.frame_stats['fps'] = self.frame_stats['total_frames']
-                    self.frame_stats['total_frames'] = 0
-                    self.frame_stats['last_time'] = current_time
+                with self.coord_lock:
+                    self.frame_stats['total_frames'] += 1
+                    current_time = time.time()
+                    if current_time - self.frame_stats['last_time'] >= 1.0:
+                        self.frame_stats['fps'] = self.frame_stats['total_frames']
+                        self.frame_stats['total_frames'] = 0
+                        self.frame_stats['last_time'] = current_time
 
                 # Encode frame ke JPEG
                 _, buffer = cv2.imencode('.jpg', frame, [
@@ -79,71 +92,100 @@ class VideoStreamSender:
                 chunks = [data[i:i+chunk_size] for i in range(0, len(data), chunk_size)]
 
                 try:
-                    # Kirim jumlah chunks terlebih dahulu
-                    self.sock.sendto(len(chunks).to_bytes(4, 'big'), (self.server_ip, self.video_port))
+                    # Kirim jumlah chunks dulu
+                    self.udp_sock.sendto(len(chunks).to_bytes(4, 'big'), (self.server_ip, self.video_port))
                     # Kirim setiap chunk
                     for chunk in chunks:
-                        self.sock.sendto(chunk, (self.server_ip, self.video_port))
+                        self.udp_sock.sendto(chunk, (self.server_ip, self.video_port))
                 except Exception as e:
-                    print(f"\n⚠️ Gagal mengirim video: {str(e)}")
+                    print(f"⚠️ Gagal mengirim video: {str(e)}")
                     time.sleep(1)
 
                 # Tampilkan preview lokal
-                cv2.imshow('Preview Pengirim', frame)
+                cv2.imshow('Preview Server', frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     self.stop()
                     break
 
             except Exception as e:
-                print(f"\n⚠️ Error pengambilan frame: {str(e)}")
+                print(f"⚠️ Error pengambilan frame: {str(e)}")
                 time.sleep(1)
 
     def _tcp_command_listener(self):
-        # Server TCP untuk menerima perintah arah
+        """Server TCP untuk menerima perintah kontrol"""
         tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         tcp_sock.bind(("0.0.0.0", self.command_port))
-        tcp_sock.listen(1)
+        tcp_sock.listen(5)  # Antrian 5 koneksi
+        
+        print(f"🖥️ Server perintah TCP siap di port {self.command_port}")
         
         while self.running:
-            conn, addr = tcp_sock.accept()
-            with conn:
-                data = conn.recv(1024)
-                if data:
-                    try:
-                        command = json.loads(data.decode())
-                        direction = command.get('direction', '').upper()
+            try:
+                conn, addr = tcp_sock.accept()
+                conn.settimeout(2.0)  # Timeout 2 detik
+                with conn:
+                    data = conn.recv(1024)
+                    if data:
+                        try:
+                            command = json.loads(data.decode())
+                            
+                            # Handle permintaan sinkronisasi koordinat
+                            if 'sync' in command:
+                                with self.coord_lock:
+                                    response = {
+                                        'status': 'ok',
+                                        'x': self.coord_x,
+                                        'y': self.coord_y,
+                                        'type': 'sync_response'
+                                    }
+                                conn.sendall(json.dumps(response).encode())
+                            
+                            # Handle perintah gerakan
+                            elif 'direction' in command:
+                                direction = command['direction'].upper()
+                                
+                                with self.coord_lock:
+                                    # Update koordinat
+                                    if direction == "KANAN": self.coord_x += 1
+                                    elif direction == "KIRI": self.coord_x -= 1
+                                    elif direction == "ATAS": self.coord_y += 1
+                                    elif direction == "BAWAH": self.coord_y -= 1
+                                    
+                                    # Kirim respon dengan koordinat terbaru
+                                    response = {
+                                        'status': 'ok',
+                                        'x': self.coord_x,
+                                        'y': self.coord_y,
+                                        'type': 'move_response'
+                                    }
+                                    conn.sendall(json.dumps(response).encode())
+                                    
+                                    self.frame_stats['command_count'] += 1
+                                    print(f"📩 Perintah {direction} diterima. Koordinat: ({self.coord_x}, {self.coord_y})")
+                            
+                        except json.JSONDecodeError:
+                            conn.sendall(json.dumps({
+                                'status': 'error',
+                                'message': 'Format JSON tidak valid'
+                            }).encode())
                         
-                        # Update koordinat berdasarkan perintah
-                        if direction == "RIGHT":
-                            self.coord_x += 1
-                        elif direction == "LEFT":
-                            self.coord_x -= 1
-                        elif direction == "UP":
-                            self.coord_y += 1
-                        elif direction == "DOWN":
-                            self.coord_y -= 1
-                        
-                        # Kirim balik koordinat terbaru
-                        response = {
-                            'status': 'ok',
-                            'x': self.coord_x,
-                            'y': self.coord_y
-                        }
-                        conn.sendall(json.dumps(response).encode())
-                        
-                        print(f"\n➡️ Perintah diterima: {direction} | Koordinat: ({self.coord_x}, {self.coord_y})")
-                        
-                    except Exception as e:
-                        print(f"⚠️ Error memproses perintah: {str(e)}")
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"⚠️ Error koneksi TCP: {str(e)}")
+                
+        tcp_sock.close()
 
     def stop(self):
+        """Menghentikan semua komponen server"""
         self.running = False
         if self.cap:
             self.cap.release()
-        if self.sock:
-            self.sock.close()
+        if self.udp_sock:
+            self.udp_sock.close()
         cv2.destroyAllWindows()
+        print("🛑 Server dihentikan")
 
 if __name__ == '__main__':
     sender = VideoStreamSender()
