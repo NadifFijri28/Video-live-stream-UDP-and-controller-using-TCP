@@ -11,10 +11,10 @@ This project implements a real-time video streaming system using UDP for video t
 ## System Architecture
 
 ```
-[Camera] --> [Server (UDP Streaming + TCP Command Listener)]
+                 [Maixcam(UDP)]
                     |
                     v
-            [Client (Flask Web Server)]
+            [Web server (Flask Web Server)]
                     |
                     v
             [Web Browser (User Interface)]
@@ -22,10 +22,11 @@ This project implements a real-time video streaming system using UDP for video t
 
 ## Setup Instructions
 
-1. **Prerequisites:**
+1. **Requirement:**
    - Python 3.x
    - OpenCV (`pip install opencv-python`)
    - Flask (`pip install flask`)
+   - pyQt5 (`pip install pyqt5`) **For Peer2Perr**
 
 2. **Running the System:**
    - Start the server first: `python server.py`
