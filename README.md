@@ -22,19 +22,25 @@ This project implements a real-time video streaming system using UDP for video t
 
 ## Setup Instructions
 
-1. **Requirement:**
+1.**Clone repositori:**
+```bash
+   git clone https://github.com/NadifFijri28/Video-live-stream-UDP-and-controller-using-TCP.git
+   cd Video-live-stream-UDP-and-controller-using-TCP
+   ```
+
+2.  **Requirement:**
    - Python 3.x
    - OpenCV (`pip install opencv-python`)
    - Flask (`pip install flask`)
-   - pyQt5 (`pip install pyqt5`) **For Peer2Perr**
+   - pyQt5 (`pip install pyqt5`) **For GUI in Peer2Perr**
 
-2. **Running the System:**
-   - Start the server first: `python Maixcam.py`
-   - Then start the client: `python Webserver.py`
+3. **Running the System:**
+   - Start the cam first: `python Maixcam.py`
+   - Then start the webserver: `python Webserver.py`
    - Access the web interface at `http://localhost:5000` if you access from same device that deploy client.py
    - Access the web interface at `http://[IP Host]:5000` if you access from other device
 
-3. **Network Configuration:**
+4. **Network Configuration:**
    - For remote devices:
      - Update server IP in WebServer.py for transmission diection via TCP in`send_direction_to_server()` Line 94
      - Update client IP in Maixcam.py for transmission video livestream via UDP in`VideoStreamSender` Line 22
