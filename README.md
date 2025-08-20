@@ -19,7 +19,7 @@ This project implements a real-time video streaming system using UDP for video t
                     v
             [Web Browser (User Interface)]
 ```
-# Why video trnasmission use UDP while command transmission use TCP
+# Why video transmission use UDP while command transmission use TCP
 
 | Aspect | Video Streaming (UDP) | Command Listener (TCP) |
 |--------|----------------------|-----------------------|
