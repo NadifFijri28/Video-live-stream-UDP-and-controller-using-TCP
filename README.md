@@ -21,7 +21,7 @@ This project implements a real-time video streaming system using UDP for video t
 ```
 # Why video transmission use UDP while command transmission use TCP
 
-| Aspect | Video Streaming (UDP) | Command Listener (TCP) |
+| Aspect | UDP | TCP |
 |--------|----------------------|-----------------------|
 | **Protocol Type** | Connectionless, unreliable | Connection-oriented, reliable |
 | **Latency** | Low (10-50ms) | Higher (100-500ms) |
