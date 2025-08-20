@@ -19,11 +19,29 @@ This project implements a real-time video streaming system using UDP for video t
                     v
             [Web Browser (User Interface)]
 ```
+# Why video trnasmission use UDP while command transmission use TCP
+
+| Aspect | Video Streaming (UDP) | Command Listener (TCP) |
+|--------|----------------------|-----------------------|
+| **Protocol Type** | Connectionless, unreliable | Connection-oriented, reliable |
+| **Latency** | Low (10-50ms) | Higher (100-500ms) |
+| **Reliability** | Best-effort delivery | Guaranteed delivery |
+| **Packet Ordering** | No guaranteed order | Guaranteed in-order delivery |
+| **Error Handling** | No retransmission | Automatic retransmission |
+| **Flow Control** | None | Built-in congestion control |
+| **Header Size** | 8 bytes | 20 bytes |
+| **Connection Setup** | No handshake | 3-way handshake required |
+| **Data Integrity** | Basic checksum only | Comprehensive error checking |
+| **Use Case** | Real-time video streaming | Critical command delivery |
+| **Packet Loss Tolerance** | High (5-20% acceptable) | Zero tolerance |
+| **Bandwidth Efficiency** | High (minimal overhead) | Lower (acknowledgment overhead) |
+| **Connection State** | Stateless | Stateful |
+| **Multicast Support** | Native support | Limited support |
 
 ## Setup Instructions
 
 1.**Clone repositori:**
-```bash
+  ```bash
    git clone https://github.com/NadifFijri28/Video-live-stream-UDP-and-controller-using-TCP.git
    cd Video-live-stream-UDP-and-controller-using-TCP
    ```
