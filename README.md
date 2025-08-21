@@ -109,3 +109,7 @@ This project implements a real-time video streaming system using UDP for video t
 3. **UI Styling:**
    - Edit `style.css` for visual changes
    - Adjust layout in `webserver.html`
+
+## Suggestion
+  I recommend you to use peer2peer method. Apart from using fewer resources, the fps obtained during transmission is also more stable and greater than the webserver method.
+  when using the webserver method, the fps obtained during the experiment ranged from 10-15. Meanwhile, with the peer2peer method, the fps obtained during the experiment ranged from 20-   27.
