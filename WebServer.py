@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import os
 import time
+import json
 from flask import Flask, Response, render_template, request, jsonify
 
 # Inisialisasi aplikasi Flask dan variabel global
@@ -40,50 +41,70 @@ class VideoStreamReceiver:
         self.running = False
         self.sock = None
         self.frame_stats = {'last_time': time.time(), 'fps': 0, 'total_frames': 0}
+        self.buffer_size = 65536  # Meningkatkan buffer untuk throughput tinggi
         
     def start(self):
         # Mulai receiver UDP dalam thread terpisah
         self.running = True
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.buffer_size)
         self.sock.bind((self.ip, self.port))
         threading.Thread(target=self._receive_frames, daemon=True).start()
         print(f"🚀 UDP receiver started on {self.ip}:{self.port}")
 
     def _receive_frames(self):
         # Loop utama: menerima frame dari server, update statistik dan frame terbaru
+        packet_buffer = {}
+        
         while self.running:
             try:
-                data, _ = self.sock.recvfrom(4)
-                num_chunks = int.from_bytes(data, 'big')
+                # Terima metadata frame
+                metadata, _ = self.sock.recvfrom(1024)
+                metadata = json.loads(metadata.decode())
+                frame_id = metadata['frame_id']
+                num_chunks = metadata['num_chunks']
                 
-                chunks = []
-                for _ in range(num_chunks):
-                    chunk, _ = self.sock.recvfrom(65507)
-                    chunks.append(chunk)
+                # Terima semua chunk untuk frame ini
+                chunks = [None] * num_chunks
+                chunks_received = 0
+                timeout = time.time() + 0.1  # Timeout 100ms untuk frame
                 
-                frame_data = b''.join(chunks)
-                np_frame = np.frombuffer(frame_data, dtype=np.uint8)
-                frame = cv2.imdecode(np_frame, cv2.IMREAD_COLOR)
+                while chunks_received < num_chunks and time.time() < timeout:
+                    try:
+                        chunk_data, _ = self.sock.recvfrom(65507)
+                        chunk_id = int.from_bytes(chunk_data[4:6], 'big')
+                        if chunk_id < num_chunks:
+                            chunks[chunk_id] = chunk_data[6:]  # Hapus header
+                            chunks_received += 1
+                    except:
+                        pass
                 
-                if frame is not None:
-                    self.frame_stats['total_frames'] += 1
-                    current_time = time.time()
-                    if current_time - self.frame_stats['last_time'] >= 1.0:
-                        self.frame_stats['fps'] = self.frame_stats['total_frames']
-                        self.frame_stats['total_frames'] = 0
-                        self.frame_stats['last_time'] = current_time
+                # Jika semua chunk diterima, reassemble frame
+                if chunks_received == num_chunks and all(chunks):
+                    frame_data = b''.join(chunks)
+                    np_frame = np.frombuffer(frame_data, dtype=np.uint8)
+                    frame = cv2.imdecode(np_frame, cv2.IMREAD_COLOR)
                     
-                    latest_frame.update({
-                        'data': frame_data,
-                        'timestamp': time.time(),
-                        'counter': latest_frame['counter'] + 1,
-                        'stats': self.frame_stats.copy()
-                    })
-                    
+                    if frame is not None:
+                        self.frame_stats['total_frames'] += 1
+                        current_time = time.time()
+                        elapsed = current_time - self.frame_stats['last_time']
+                        
+                        if elapsed >= 1.0:
+                            self.frame_stats['fps'] = self.frame_stats['total_frames'] / elapsed
+                            self.frame_stats['total_frames'] = 0
+                            self.frame_stats['last_time'] = current_time
+                        
+                        latest_frame.update({
+                            'data': frame_data,
+                            'timestamp': current_time,
+                            'counter': latest_frame['counter'] + 1,
+                            'stats': self.frame_stats.copy()
+                        })
+                
             except Exception as e:
                 print(f"\n⚠️ Error receiving frame: {str(e)}")
-                time.sleep(1)
+                time.sleep(0.001)  # Mengurangi sleep time untuk responsivitas
 
     def stop(self):
         # Stop receiver dan release resource
@@ -91,13 +112,11 @@ class VideoStreamReceiver:
         if self.sock:
             self.sock.close()
 
-def send_direction_to_server(direction, server_ip='127.0.0.1', server_port=9002):
+def send_direction_to_server(direction, server_ip='192.168.31', server_port=9002): #Ganti IP sesuai maixcam
     # Fungsi untuk mengirim perintah arah ke server via TCP
-    # --- PETUNJUK ---
-    # Ubah 'server_ip' di sini ke IP server (pengirim video) jika client dan server berada di perangkat berbeda.
-    # Contoh: server_ip='192.168.1.20' jika server berada di jaringan lokal dengan IP tersebut.
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)  # Timeout lebih pendek
             s.connect((server_ip, server_port))
             s.sendall(direction.encode())
     except Exception as e:
@@ -121,12 +140,19 @@ def video_feed():
         first_access_logged = True
     
     def generate():
+        last_frame_time = time.time()
         while True:
             if latest_frame['data']:
                 yield (b'--frame\r\n'
                       b'Content-Type: image/jpeg\r\n\r\n' + 
                       latest_frame['data'] + b'\r\n')
-            time.sleep(0.03)
+                # Menjaga frame rate konsisten
+                elapsed = time.time() - last_frame_time
+                sleep_time = max(0, 1/30 - elapsed)  # Target 30 FPS
+                time.sleep(sleep_time)
+                last_frame_time = time.time()
+            else:
+                time.sleep(0.01)
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/stats')
@@ -134,7 +160,7 @@ def stats():
     # Endpoint statistik frame untuk web
     if latest_frame['data']:
         return {
-            'fps': latest_frame['stats']['fps'],
+            'fps': round(latest_frame['stats']['fps'], 1),
             'last_update': time.time() - latest_frame['timestamp'],
             'total_frames': latest_frame['counter']
         }

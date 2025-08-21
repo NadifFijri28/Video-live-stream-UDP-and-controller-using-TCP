@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import time
 import json
+import struct
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, 
                              QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout)
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QBrush
@@ -31,33 +32,51 @@ class VideoReceiver:
         print(f"🚀 Penerima video UDP berjalan di {self.ip}:{self.port}")
 
     def _receive_frames(self):
+        packet_buffer = {}
+        
         while self.running:
             try:
-                data, _ = self.sock.recvfrom(4)
-                num_chunks = int.from_bytes(data, 'big')
+                # Terima metadata frame
+                metadata, _ = self.sock.recvfrom(8)
+                frame_id, num_chunks = struct.unpack('>II', metadata)
                 
-                chunks = []
-                for _ in range(num_chunks):
-                    chunk, _ = self.sock.recvfrom(65507)
-                    chunks.append(chunk)
+                # Terima semua chunk untuk frame ini
+                chunks = [None] * num_chunks
+                chunks_received = 0
+                timeout = time.time() + 0.1  # Timeout 100ms untuk frame
                 
-                frame_data = b''.join(chunks)
-                np_frame = np.frombuffer(frame_data, dtype=np.uint8)
-                frame = cv2.imdecode(np_frame, cv2.IMREAD_COLOR)
+                while chunks_received < num_chunks and time.time() < timeout:
+                    try:
+                        chunk_data, _ = self.sock.recvfrom(1500)  # MTU size
+                        chunk_frame_id, chunk_num = struct.unpack('>IH', chunk_data[:6])
+                        
+                        if chunk_frame_id == frame_id and chunk_num < num_chunks:
+                            chunks[chunk_num] = chunk_data[6:]  # Hapus header
+                            chunks_received += 1
+                    except:
+                        pass
                 
-                if frame is not None:
-                    self.frame_stats['total_frames'] += 1
-                    current_time = time.time()
-                    if current_time - self.frame_stats['last_time'] >= 1.0:
-                        self.frame_stats['fps'] = self.frame_stats['total_frames']
-                        self.frame_stats['total_frames'] = 0
-                        self.frame_stats['last_time'] = current_time
+                # Jika semua chunk diterima, reassemble frame
+                if chunks_received == num_chunks and all(chunks):
+                    frame_data = b''.join(chunks)
+                    np_frame = np.frombuffer(frame_data, dtype=np.uint8)
+                    frame = cv2.imdecode(np_frame, cv2.IMREAD_COLOR)
                     
-                    self.current_frame = frame
+                    if frame is not None:
+                        self.frame_stats['total_frames'] += 1
+                        current_time = time.time()
+                        elapsed = current_time - self.frame_stats['last_time']
+                        
+                        if elapsed >= 1.0:
+                            self.frame_stats['fps'] = self.frame_stats['total_frames'] / elapsed
+                            self.frame_stats['total_frames'] = 0
+                            self.frame_stats['last_time'] = current_time
+                        
+                        self.current_frame = frame
                     
             except Exception as e:
                 print(f"⚠️ Gagal menerima frame: {str(e)}")
-                time.sleep(1)
+                time.sleep(0.001)
 
     def stop(self):
         self.running = False
@@ -65,7 +84,7 @@ class VideoReceiver:
             self.sock.close()
 
 class RobotGUI(QMainWindow):
-    def __init__(self, server_ip='127.0.0.1', command_port=9002):
+    def __init__(self, server_ip='192.168.31', command_port=9002): #Ganti IP sesuai maixcam
         super().__init__()
         self.setWindowTitle("Robot P2P Control")
         self.setGeometry(100, 100, 900, 600)
@@ -89,7 +108,7 @@ class RobotGUI(QMainWindow):
         # Timer untuk update frame
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(30)
+        self.timer.start(33)  # ~30 FPS
 
     def init_ui(self):
         main_widget = QWidget()
@@ -100,7 +119,7 @@ class RobotGUI(QMainWindow):
         self.video_label = QLabel()
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setStyleSheet("border: 2px solid #333;")
-        self.video_label.setFixedSize(640, 480)
+        self.video_label.setFixedSize(320, 240)  # Sesuai resolusi kamera
         video_panel.addWidget(self.video_label)
         
         # Statistik
@@ -168,7 +187,7 @@ class RobotGUI(QMainWindow):
             ))
             
             self.stats_label.setText(
-                f"FPS: {self.video_receiver.frame_stats['fps']} | "
+                f"FPS: {self.video_receiver.frame_stats['fps']:.1f} | "
                 f"Total Frame: {self.video_receiver.frame_stats['total_frames']}"
             )
         
@@ -212,7 +231,7 @@ class RobotGUI(QMainWindow):
         while self.video_receiver.running:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(2.0)
+                    s.settimeout(1.0)  # Timeout lebih pendek
                     s.connect((self.server_ip, self.command_port))
                     s.sendall(json.dumps({'sync': True}).encode())
                     data = s.recv(1024)
@@ -224,13 +243,13 @@ class RobotGUI(QMainWindow):
             except Exception as e:
                 print(f"⚠️ Gagal sinkronisasi koordinat: {str(e)}")
             
-            time.sleep(10)  # Sinkron setiap 10 detik
+            time.sleep(5)  # Sinkron setiap 5 detik
 
     def send_command(self, direction):
         """Kirim perintah gerakan ke server"""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(2.0)
+                s.settimeout(1.0)  # Timeout lebih pendek
                 s.connect((self.server_ip, self.command_port))
                 s.sendall(json.dumps({'direction': direction}).encode())
                 
